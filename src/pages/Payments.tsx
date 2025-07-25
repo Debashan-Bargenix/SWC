@@ -1,4 +1,5 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { supabase } from "@/integrations/supabase/client";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -9,60 +10,26 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { useToast } from "@/hooks/use-toast";
 import { Plus, Search, Filter, DollarSign, Calendar, User } from "lucide-react";
 
-// Mock payments data
-const mockPayments = [
-  {
-    id: 1,
-    memberName: "John Smith",
-    amount: 79,
-    plan: "Premium Plan",
-    date: "2024-01-15",
-    status: "Completed",
-    method: "Credit Card",
-    transactionId: "TXN001234"
-  },
-  {
-    id: 2,
-    memberName: "Sarah Johnson",
-    amount: 49,
-    plan: "Basic Plan", 
-    date: "2024-01-14",
-    status: "Completed",
-    method: "Bank Transfer",
-    transactionId: "TXN001235"
-  },
-  {
-    id: 3,
-    memberName: "Mike Wilson",
-    amount: 79,
-    plan: "Premium Plan",
-    date: "2024-01-13",
-    status: "Pending",
-    method: "Credit Card",
-    transactionId: "TXN001236"
-  },
-  {
-    id: 4,
-    memberName: "Emily Davis",
-    amount: 49,
-    plan: "Basic Plan",
-    date: "2024-01-12",
-    status: "Failed",
-    method: "Credit Card",
-    transactionId: "TXN001237"
-  }
-];
 
-const mockMembers = [
-  { id: 1, name: "John Smith", plan: "Premium Plan", amount: 79 },
-  { id: 2, name: "Sarah Johnson", plan: "Basic Plan", amount: 49 },
-  { id: 3, name: "Mike Wilson", plan: "Premium Plan", amount: 79 },
-  { id: 4, name: "Emily Davis", plan: "Basic Plan", amount: 49 },
-];
+type Payment = {
+  id: string;
+  member_id: string;
+  amount: number;
+  payment_date: string;
+  payment_method: string;
+  status: string;
+  created_at: string;
+};
+
+type Member = {
+  id: string;
+  name: string;
+};
 
 export default function Payments() {
   const { toast } = useToast();
-  const [payments, setPayments] = useState(mockPayments);
+  const [payments, setPayments] = useState<Payment[]>([]);
+  const [members, setMembers] = useState<Member[]>([]);
   const [searchTerm, setSearchTerm] = useState("");
   const [filterStatus, setFilterStatus] = useState("All");
   const [isDialogOpen, setIsDialogOpen] = useState(false);
@@ -72,10 +39,28 @@ export default function Payments() {
     method: "",
     date: new Date().toISOString().split('T')[0]
   });
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  // Fetch payments and members from Supabase
+  useEffect(() => {
+    setLoading(true);
+    Promise.all([
+      supabase.from("payments").select("*"),
+      supabase.from("members").select("id, first_name, last_name")
+    ]).then(([paymentsRes, membersRes]) => {
+      if (paymentsRes.error) setError(paymentsRes.error.message);
+      else setPayments(paymentsRes.data || []);
+      if (membersRes.error) setError(membersRes.error.message);
+      else setMembers((membersRes.data || []).map((m: any) => ({ id: m.id, name: m.first_name + ' ' + m.last_name })));
+      setLoading(false);
+    });
+  }, []);
 
   const filteredPayments = payments.filter(payment => {
-    const matchesSearch = payment.memberName.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                         payment.transactionId.toLowerCase().includes(searchTerm.toLowerCase());
+    const member = members.find(m => m.id === payment.member_id);
+    const memberName = member ? member.name : "";
+    const matchesSearch = memberName.toLowerCase().includes(searchTerm.toLowerCase());
     const matchesFilter = filterStatus === "All" || payment.status === filterStatus;
     return matchesSearch && matchesFilter;
   });
@@ -84,9 +69,8 @@ export default function Payments() {
     setFormData(prev => ({ ...prev, [field]: value }));
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    
     if (!formData.memberId || !formData.amount || !formData.method) {
       toast({
         title: "Validation Error",
@@ -95,27 +79,23 @@ export default function Payments() {
       });
       return;
     }
-
-    const selectedMember = mockMembers.find(m => m.id.toString() === formData.memberId);
-    if (!selectedMember) return;
-
+    setLoading(true);
     const newPayment = {
-      id: Math.max(...payments.map(p => p.id)) + 1,
-      memberName: selectedMember.name,
+      member_id: formData.memberId,
       amount: parseFloat(formData.amount),
-      plan: selectedMember.plan,
-      date: formData.date,
+      payment_date: formData.date,
+      payment_method: formData.method,
       status: "Completed",
-      method: formData.method,
-      transactionId: `TXN${Date.now().toString().slice(-6)}`
+      created_at: new Date().toISOString(),
     };
-
-    setPayments(prev => [newPayment, ...prev]);
+    const { data, error } = await supabase.from("payments").insert([newPayment]).select();
+    if (error) setError(error.message);
+    if (data) setPayments(prev => [data[0], ...prev]);
+    setLoading(false);
     toast({
       title: "Payment Recorded",
       description: `Payment of $${formData.amount} has been recorded successfully.`,
     });
-
     setFormData({
       memberId: "",
       amount: "",
@@ -172,11 +152,11 @@ export default function Payments() {
                     <SelectValue placeholder="Select a member" />
                   </SelectTrigger>
                   <SelectContent>
-                    {mockMembers.map((member) => (
-                      <SelectItem key={member.id} value={member.id.toString()}>
-                        {member.name} - {member.plan}
-                      </SelectItem>
-                    ))}
+            {members.map((member) => (
+              <SelectItem key={member.id} value={member.id}>
+                {member.name}
+              </SelectItem>
+            ))}
                   </SelectContent>
                 </Select>
               </div>
@@ -306,34 +286,38 @@ export default function Payments() {
         </CardHeader>
         <CardContent>
           <div className="space-y-4">
-            {filteredPayments.map((payment) => (
-              <div key={payment.id} className="flex items-center justify-between p-4 border rounded-lg">
-                <div className="flex items-center gap-4">
-                  <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center">
-                    <DollarSign className="w-5 h-5 text-primary" />
+            {filteredPayments.map((payment) => {
+              const member = members.find(m => m.id === payment.member_id);
+              return (
+                <div key={payment.id} className="flex items-center justify-between p-4 border rounded-lg">
+                  <div className="flex items-center gap-4">
+                    <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center">
+                      <DollarSign className="w-5 h-5 text-primary" />
+                    </div>
+                    <div>
+                      <h4 className="font-medium">{member ? member.name : "Unknown Member"}</h4>
+                      <p className="text-sm text-muted-foreground">{payment.payment_method}</p>
+                      <p className="text-xs text-muted-foreground">{payment.id}</p>
+                    </div>
                   </div>
-                  <div>
-                    <h4 className="font-medium">{payment.memberName}</h4>
-                    <p className="text-sm text-muted-foreground">{payment.plan}</p>
-                    <p className="text-xs text-muted-foreground">{payment.transactionId}</p>
+                  <div className="flex items-center gap-6 text-right">
+                    <div>
+                      <p className="font-medium">${payment.amount}</p>
+                      <p className="text-sm text-muted-foreground">{payment.payment_method}</p>
+                    </div>
+                    <div>
+                      <p className="text-sm font-medium">{payment.payment_date}</p>
+                      {getStatusBadge(payment.status)}
+                    </div>
                   </div>
                 </div>
-                
-                <div className="flex items-center gap-6 text-right">
-                  <div>
-                    <p className="font-medium">${payment.amount}</p>
-                    <p className="text-sm text-muted-foreground">{payment.method}</p>
-                  </div>
-                  <div>
-                    <p className="text-sm font-medium">{payment.date}</p>
-                    {getStatusBadge(payment.status)}
-                  </div>
-                </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
 
-          {filteredPayments.length === 0 && (
+          {loading && <p className="text-center py-8">Loading payments...</p>}
+          {error && <p className="text-center py-8 text-destructive">{error}</p>}
+          {!loading && filteredPayments.length === 0 && (
             <div className="text-center py-8">
               <p className="text-muted-foreground">No payments found matching your criteria.</p>
             </div>

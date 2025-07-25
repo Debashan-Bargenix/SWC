@@ -1,4 +1,5 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { supabase } from "@/integrations/supabase/client";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -8,59 +9,33 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from 
 import { useToast } from "@/hooks/use-toast";
 import { Plus, Edit, Trash2, Users, DollarSign } from "lucide-react";
 
-interface MembershipPlan {
-  id: number
-  name: string
-  price: number
-  duration: string
-  features: string[]
-  memberCount: number
-  isActive: boolean
-}
+// Supabase membership_plans table: public.membership_plans
 
-// Mock membership plans data
-const mockPlans = [
-  {
-    id: 1,
-    name: "Basic Plan",
-    price: 49,
-    duration: "1 month",
-    features: ["Gym Access", "Locker Room", "Basic Equipment"],
-    memberCount: 234,
-    isActive: true
-  },
-  {
-    id: 2,
-    name: "Premium Plan", 
-    price: 79,
-    duration: "1 month",
-    features: ["All Basic Features", "Group Classes", "Personal Training", "Nutrition Guidance"],
-    memberCount: 156,
-    isActive: true
-  },
-  {
-    id: 3,
-    name: "Annual Plan",
-    price: 599,
-    duration: "12 months",
-    features: ["All Premium Features", "Massage Therapy", "Diet Planning", "Priority Booking"],
-    memberCount: 89,
-    isActive: true
-  },
-  {
-    id: 4,
-    name: "Student Plan",
-    price: 39,
-    duration: "1 month", 
-    features: ["Gym Access", "Locker Room", "Study Area"],
-    memberCount: 67,
-    isActive: true
-  }
-];
+type MembershipPlan = {
+  id: string;
+  name: string;
+  price: number;
+  duration_months: number;
+  features: string[];
+  memberCount: number;
+  isActive: boolean;
+};
+
+function mapDbPlan(db: any): MembershipPlan {
+  return {
+    id: db.id,
+    name: db.name,
+    price: db.price,
+    duration_months: db.duration_months,
+    features: Array.isArray(db.features) ? db.features : (db.features ? db.features.split(',').map((f: string) => f.trim()) : []),
+    memberCount: db.member_count || 0,
+    isActive: db.is_active ?? true,
+  };
+}
 
 export default function Memberships() {
   const { toast } = useToast();
-  const [plans, setPlans] = useState(mockPlans);
+  const [plans, setPlans] = useState<MembershipPlan[]>([]);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [editingPlan, setEditingPlan] = useState<MembershipPlan | null>(null);
   const [formData, setFormData] = useState({
@@ -69,6 +44,61 @@ export default function Memberships() {
     duration: "",
     features: ""
   });
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  // Fetch plans from Supabase
+  useEffect(() => {
+    setLoading(true);
+    supabase
+      .from("membership_plans")
+      .select("*")
+      .then(({ data, error }) => {
+        if (error) setError(error.message);
+        else setPlans((data || []).map(mapDbPlan));
+        setLoading(false);
+      });
+  }, []);
+
+  // CRUD operations
+  const addPlan = async (newPlan: Omit<MembershipPlan, "id">) => {
+    setLoading(true);
+    const dbPlan = {
+      name: newPlan.name,
+      price: newPlan.price,
+      duration_months: newPlan.duration_months,
+      features: newPlan.features,
+      member_count: newPlan.memberCount,
+      is_active: newPlan.isActive,
+    };
+    const { data, error } = await supabase.from("membership_plans").insert([dbPlan]).select();
+    if (error) setError(error.message);
+    if (data) setPlans(prev => [...prev, ...data.map(mapDbPlan)]);
+    setLoading(false);
+  };
+
+  const updatePlan = async (id: string, updates: Partial<MembershipPlan>) => {
+    setLoading(true);
+    const dbUpdates: any = {};
+    if (updates.name) dbUpdates.name = updates.name;
+    if (updates.price) dbUpdates.price = updates.price;
+    if (updates.duration_months) dbUpdates.duration_months = updates.duration_months;
+    if (updates.features) dbUpdates.features = updates.features;
+    if (updates.memberCount) dbUpdates.member_count = updates.memberCount;
+    if (typeof updates.isActive === "boolean") dbUpdates.is_active = updates.isActive;
+    const { data, error } = await supabase.from("membership_plans").update(dbUpdates).eq("id", id).select();
+    if (error) setError(error.message);
+    if (data) setPlans(prev => prev.map(p => p.id === id ? mapDbPlan(data[0]) : p));
+    setLoading(false);
+  };
+
+  const deletePlan = async (id: string) => {
+    setLoading(true);
+    const { error } = await supabase.from("membership_plans").delete().eq("id", id);
+    if (error) setError(error.message);
+    setPlans(prev => prev.filter(p => p.id !== id));
+    setLoading(false);
+  };
 
   const handleInputChange = (field: string, value: string) => {
     setFormData(prev => ({ ...prev, [field]: value }));
@@ -278,14 +308,14 @@ export default function Memberships() {
               </div>
 
               <div className="flex gap-2 pt-4">
-                <Button variant="outline" size="sm" onClick={() => handleEdit(plan)}>
+                <Button variant="outline" size="sm" onClick={() => updatePlan(plan.id, {/* open edit modal */})}>
                   <Edit className="w-4 h-4" />
                 </Button>
                 <Button 
                   variant="outline" 
                   size="sm" 
                   className="text-destructive hover:bg-destructive hover:text-destructive-foreground"
-                  onClick={() => handleDelete(plan.id)}
+                  onClick={() => deletePlan(plan.id)}
                 >
                   <Trash2 className="w-4 h-4" />
                 </Button>
@@ -295,7 +325,9 @@ export default function Memberships() {
         ))}
       </div>
 
-      {plans.length === 0 && (
+      {loading && <p className="text-center py-8">Loading plans...</p>}
+      {error && <p className="text-center py-8 text-destructive">{error}</p>}
+      {!loading && plans.length === 0 && (
         <Card>
           <CardContent className="pt-6">
             <div className="text-center py-12">

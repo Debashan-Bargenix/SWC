@@ -1,4 +1,5 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { supabase } from "@/integrations/supabase/client";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -13,75 +14,111 @@ import {
   Filter
 } from "lucide-react";
 
-// Mock data - in real app this would come from your database
-const mockMembers = [
-  {
-    id: 1,
-    name: "John Smith",
-    email: "john.smith@email.com",
-    phone: "(555) 123-4567",
-    plan: "Premium",
-    status: "Active",
-    joinDate: "2024-01-15",
-    expiryDate: "2024-07-15",
-    paymentStatus: "Paid"
-  },
-  {
-    id: 2,
-    name: "Sarah Johnson", 
-    email: "sarah.j@email.com",
-    phone: "(555) 234-5678",
-    plan: "Basic",
-    status: "Active",
-    joinDate: "2024-01-14",
-    expiryDate: "2024-07-14",
-    paymentStatus: "Paid"
-  },
-  {
-    id: 3,
-    name: "Mike Wilson",
-    email: "mike.wilson@email.com", 
-    phone: "(555) 345-6789",
-    plan: "Premium",
-    status: "Expiring",
-    joinDate: "2023-12-15",
-    expiryDate: "2024-01-25",
-    paymentStatus: "Due"
-  },
-  {
-    id: 4,
-    name: "Emily Davis",
-    email: "emily.davis@email.com",
-    phone: "(555) 456-7890", 
-    plan: "Basic",
-    status: "Active",
-    joinDate: "2024-01-13",
-    expiryDate: "2024-07-13",
-    paymentStatus: "Paid"
-  },
-  {
-    id: 5,
-    name: "Alex Thompson",
-    email: "alex.t@email.com",
-    phone: "(555) 567-8901",
-    plan: "Premium", 
-    status: "Active",
-    joinDate: "2024-01-10",
-    expiryDate: "2024-07-10",
-    paymentStatus: "Paid"
-  }
-];
+// Supabase member table: public.members
+
+type Member = {
+  id: string;
+  name: string;
+  email: string;
+  phone: string;
+  plan: string;
+  status: string;
+  join_date: string;
+  expiry_date: string;
+  payment_status: string;
+};
+
+function mapDbMember(db: any): Member {
+  return {
+    id: db.id,
+    name: db.first_name + ' ' + db.last_name,
+    email: db.email,
+    phone: db.phone,
+    plan: db.plan || '',
+    status: db.status,
+    join_date: db.created_at,
+    expiry_date: db.expiry_date || '',
+    payment_status: db.payment_status || '',
+  };
+}
 
 export default function Members() {
+  const [members, setMembers] = useState<Member[]>([]);
   const [searchTerm, setSearchTerm] = useState("");
   const [filterStatus, setFilterStatus] = useState("All");
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
-  const filteredMembers = mockMembers.filter(member => {
+  // Fetch members from Supabase
+  useEffect(() => {
+    setLoading(true);
+    supabase
+      .from("members")
+      .select("*")
+      .then(({ data, error }) => {
+        if (error) setError(error.message);
+        else setMembers((data || []).map(mapDbMember));
+        setLoading(false);
+      });
+  }, []);
+
+  // Filtered members
+  const filteredMembers = members.filter(member => {
     const matchesSearch = member.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                         member.email.toLowerCase().includes(searchTerm.toLowerCase());
+      member.email.toLowerCase().includes(searchTerm.toLowerCase());
     const matchesFilter = filterStatus === "All" || member.status === filterStatus;
     return matchesSearch && matchesFilter;
   });
+
+  // CRUD operations
+  const addMember = async (newMember: Omit<Member, "id">) => {
+    setLoading(true);
+    // Map UI fields to DB fields
+    const dbMember = {
+      first_name: newMember.name.split(' ')[0],
+      last_name: newMember.name.split(' ').slice(1).join(' '),
+      email: newMember.email,
+      phone: newMember.phone,
+      plan: newMember.plan,
+      status: newMember.status,
+      created_at: newMember.join_date,
+      expiry_date: newMember.expiry_date,
+      payment_status: newMember.payment_status,
+    };
+    const { data, error } = await supabase.from("members").insert([dbMember]).select();
+    if (error) setError(error.message);
+    if (data) setMembers(prev => [...prev, ...data.map(mapDbMember)]);
+    setLoading(false);
+  };
+
+  const updateMember = async (id: string, updates: Partial<Member>) => {
+    setLoading(true);
+    // Map UI fields to DB fields
+    const dbUpdates: any = {};
+    if (updates.name) {
+      dbUpdates.first_name = updates.name.split(' ')[0];
+      dbUpdates.last_name = updates.name.split(' ').slice(1).join(' ');
+    }
+    if (updates.email) dbUpdates.email = updates.email;
+    if (updates.phone) dbUpdates.phone = updates.phone;
+    if (updates.plan) dbUpdates.plan = updates.plan;
+    if (updates.status) dbUpdates.status = updates.status;
+    if (updates.join_date) dbUpdates.created_at = updates.join_date;
+    if (updates.expiry_date) dbUpdates.expiry_date = updates.expiry_date;
+    if (updates.payment_status) dbUpdates.payment_status = updates.payment_status;
+    const { data, error } = await supabase.from("members").update(dbUpdates).eq("id", id).select();
+    if (error) setError(error.message);
+    if (data) setMembers(prev => prev.map(m => m.id === id ? mapDbMember(data[0]) : m));
+    setLoading(false);
+  };
+
+  const deleteMember = async (id: string) => {
+    setLoading(true);
+    const { error } = await supabase.from("members").delete().eq("id", id);
+    if (error) setError(error.message);
+    setMembers(prev => prev.filter(m => m.id !== id));
+    setLoading(false);
+  };
 
   const getStatusBadge = (status: string) => {
     switch (status) {
@@ -116,7 +153,8 @@ export default function Members() {
           <h2 className="text-3xl font-bold tracking-tight">Members</h2>
           <p className="text-muted-foreground">Manage your gym members and their memberships.</p>
         </div>
-        <Button className="bg-gradient-primary">
+        {/* Add New Member button (example, should open a form/modal) */}
+        <Button className="bg-gradient-primary" onClick={() => {/* open add member modal */}}>
           <Plus className="w-4 h-4 mr-2" />
           Add New Member
         </Button>
@@ -169,26 +207,23 @@ export default function Members() {
                     <p className="text-sm text-muted-foreground">{member.phone}</p>
                   </div>
                 </div>
-                
                 <div className="flex items-center gap-6">
                   <div className="text-center">
                     <p className="text-sm font-medium">{member.plan} Plan</p>
-                    <p className="text-xs text-muted-foreground">Expires: {member.expiryDate}</p>
+                    <p className="text-xs text-muted-foreground">Expires: {member.expiry_date}</p>
                   </div>
-                  
                   <div className="flex flex-col gap-2">
                     {getStatusBadge(member.status)}
-                    {getPaymentBadge(member.paymentStatus)}
+                    {getPaymentBadge(member.payment_status)}
                   </div>
-                  
                   <div className="flex gap-2">
                     <Button variant="outline" size="sm">
                       <Eye className="w-4 h-4" />
                     </Button>
-                    <Button variant="outline" size="sm">
+                    <Button variant="outline" size="sm" onClick={() => updateMember(member.id, {/* open edit modal */})}>
                       <Edit className="w-4 h-4" />
                     </Button>
-                    <Button variant="outline" size="sm" className="text-destructive hover:bg-destructive hover:text-destructive-foreground">
+                    <Button variant="outline" size="sm" className="text-destructive hover:bg-destructive hover:text-destructive-foreground" onClick={() => deleteMember(member.id)}>
                       <Trash2 className="w-4 h-4" />
                     </Button>
                   </div>
@@ -199,7 +234,9 @@ export default function Members() {
         ))}
       </div>
 
-      {filteredMembers.length === 0 && (
+      {loading && <p className="text-center py-8">Loading members...</p>}
+      {error && <p className="text-center py-8 text-destructive">{error}</p>}
+      {!loading && filteredMembers.length === 0 && (
         <Card>
           <CardContent className="pt-6">
             <div className="text-center py-8">
