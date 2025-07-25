@@ -8,9 +8,12 @@ import {
   BarChart3,
   Home,
   UserPlus,
-  DollarSign
+  DollarSign,
+  LogOut
 } from "lucide-react";
-import { NavLink, useLocation } from "react-router-dom";
+import { NavLink, useLocation, useNavigate } from "react-router-dom";
+import { useAuth } from "@/contexts/AuthContext";
+import { useToast } from "@/hooks/use-toast";
 
 import {
   Sidebar,
@@ -25,7 +28,7 @@ import {
 } from "@/components/ui/sidebar";
 
 const mainNavItems = [
-  { title: "Dashboard", url: "/", icon: Home },
+  { title: "Dashboard", url: "/dashboard", icon: Home },
   { title: "Members", url: "/members", icon: Users },
   { title: "Add Member", url: "/add-member", icon: UserPlus },
   { title: "Memberships", url: "/memberships", icon: CreditCard },
@@ -41,6 +44,9 @@ const systemNavItems = [
 export function AppSidebar() {
   const { state } = useSidebar();
   const location = useLocation();
+  const navigate = useNavigate();
+  const { userEmail, logout } = useAuth();
+  const { toast } = useToast();
   const currentPath = location.pathname;
   const isCollapsed = state === "collapsed";
 
@@ -50,6 +56,15 @@ export function AppSidebar() {
       ? "bg-accent text-accent-foreground font-medium"
       : "bg-background text-foreground hover:bg-muted/50";
 
+  const handleLogout = () => {
+    logout();
+    toast({
+      title: "Logged Out",
+      description: "You have been successfully logged out.",
+    });
+    navigate("/login");
+  };
+
   return (
     <Sidebar className={isCollapsed ? "w-14" : "w-64"} collapsible="icon">
       <SidebarContent>
@@ -58,12 +73,24 @@ export function AppSidebar() {
             <div className="w-8 h-8 rounded-lg bg-gradient-primary flex items-center justify-center">
               <span className="text-white font-bold text-sm">FF</span>
             </div>
-            <div>
-              <h2 className="font-semibold text-sm">FitFlow</h2>
-              <p className="text-xs text-muted-foreground">Gym Management</p>
-            </div>
+            {!isCollapsed && (
+              <div>
+                <h2 className="font-semibold text-sm">FitFlow</h2>
+                <p className="text-xs text-muted-foreground">Gym Management</p>
+              </div>
+            )}
           </div>
         </div>
+
+        {/* User Info */}
+        {!isCollapsed && (
+          <div className="px-4 pb-4">
+            <div className="p-3 bg-muted/50 rounded-lg">
+              <p className="text-xs font-medium text-muted-foreground">Logged in as</p>
+              <p className="text-sm font-medium truncate">{userEmail}</p>
+            </div>
+          </div>
+        )}
 
         <SidebarGroup>
           <SidebarGroupLabel>Main</SidebarGroupLabel>
@@ -109,6 +136,20 @@ export function AppSidebar() {
                   </SidebarMenuItem>
                 ))
               )}
+            </SidebarMenu>
+          </SidebarGroupContent>
+        </SidebarGroup>
+
+        {/* Logout */}
+        <SidebarGroup className="mt-auto">
+          <SidebarGroupContent>
+            <SidebarMenu>
+              <SidebarMenuItem>
+                <SidebarMenuButton onClick={handleLogout} className="text-destructive hover:text-destructive hover:bg-destructive/10">
+                  <LogOut className="h-4 w-4" />
+                  <span>Logout</span>
+                </SidebarMenuButton>
+              </SidebarMenuItem>
             </SidebarMenu>
           </SidebarGroupContent>
         </SidebarGroup>
