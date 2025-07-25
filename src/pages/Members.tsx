@@ -153,8 +153,8 @@ export default function Members() {
           <h2 className="text-3xl font-bold tracking-tight">Members</h2>
           <p className="text-muted-foreground">Manage your gym members and their memberships.</p>
         </div>
-        {/* Add New Member button (example, should open a form/modal) */}
-        <Button className="bg-gradient-primary" onClick={() => {/* open add member modal */}}>
+        {/* Add New Member button navigates to dedicated page */}
+        <Button className="bg-gradient-primary" onClick={() => window.location.href = '/create-membership-plan'}>
           <Plus className="w-4 h-4 mr-2" />
           Add New Member
         </Button>
