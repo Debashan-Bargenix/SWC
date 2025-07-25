@@ -56,12 +56,10 @@ export function AppSidebar() {
             <div className="w-8 h-8 rounded-lg bg-gradient-primary flex items-center justify-center">
               <span className="text-white font-bold text-sm">FF</span>
             </div>
-            {!isCollapsed && (
-              <div>
-                <h2 className="font-semibold text-sm">FitFlow</h2>
-                <p className="text-xs text-muted-foreground">Gym Management</p>
-              </div>
-            )}
+            <div>
+              <h2 className="font-semibold text-sm">FitFlow</h2>
+              <p className="text-xs text-muted-foreground">Gym Management</p>
+            </div>
           </div>
         </div>
 
@@ -69,16 +67,22 @@ export function AppSidebar() {
           <SidebarGroupLabel>Main</SidebarGroupLabel>
           <SidebarGroupContent>
             <SidebarMenu>
-              {mainNavItems.map((item) => (
-                <SidebarMenuItem key={item.title}>
-                  <SidebarMenuButton asChild>
-                    <NavLink to={item.url} end className={getNavCls}>
-                      <item.icon className="h-4 w-4" />
-                      {!isCollapsed && <span>{item.title}</span>}
-                    </NavLink>
-                  </SidebarMenuButton>
+              {mainNavItems.length === 0 ? (
+                <SidebarMenuItem>
+                  <span className="text-xs text-muted-foreground">No main items</span>
                 </SidebarMenuItem>
-              ))}
+              ) : (
+                mainNavItems.map((item) => (
+                  <SidebarMenuItem key={item.title}>
+                    <SidebarMenuButton asChild>
+                      <NavLink to={item.url} end className={getNavCls}>
+                        <item.icon className="h-4 w-4" />
+                        <span>{item.title}</span>
+                      </NavLink>
+                    </SidebarMenuButton>
+                  </SidebarMenuItem>
+                ))
+              )}
             </SidebarMenu>
           </SidebarGroupContent>
         </SidebarGroup>
@@ -87,16 +91,22 @@ export function AppSidebar() {
           <SidebarGroupLabel>System</SidebarGroupLabel>
           <SidebarGroupContent>
             <SidebarMenu>
-              {systemNavItems.map((item) => (
-                <SidebarMenuItem key={item.title}>
-                  <SidebarMenuButton asChild>
-                    <NavLink to={item.url} className={getNavCls}>
-                      <item.icon className="h-4 w-4" />
-                      {!isCollapsed && <span>{item.title}</span>}
-                    </NavLink>
-                  </SidebarMenuButton>
+              {systemNavItems.length === 0 ? (
+                <SidebarMenuItem>
+                  <span className="text-xs text-muted-foreground">No system items</span>
                 </SidebarMenuItem>
-              ))}
+              ) : (
+                systemNavItems.map((item) => (
+                  <SidebarMenuItem key={item.title}>
+                    <SidebarMenuButton asChild>
+                      <NavLink to={item.url} className={getNavCls}>
+                        <item.icon className="h-4 w-4" />
+                        <span>{item.title}</span>
+                      </NavLink>
+                    </SidebarMenuButton>
+                  </SidebarMenuItem>
+                ))
+              )}
             </SidebarMenu>
           </SidebarGroupContent>
         </SidebarGroup>
