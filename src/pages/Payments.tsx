@@ -85,7 +85,7 @@ export default function Payments() {
       amount: parseFloat(formData.amount),
       payment_date: formData.date,
       payment_method: formData.method,
-      status: "Completed",
+      status: "completed",
       created_at: new Date().toISOString(),
     };
     const { data, error } = await supabase.from("payments").insert([newPayment]).select();
@@ -107,23 +107,38 @@ export default function Payments() {
 
   const getStatusBadge = (status: string) => {
     switch (status) {
-      case "Completed":
+      case "completed":
         return <Badge className="bg-success">Completed</Badge>;
-      case "Pending":
+      case "pending":
         return <Badge className="bg-warning">Pending</Badge>;
-      case "Failed":
+      case "failed":
         return <Badge variant="destructive">Failed</Badge>;
       default:
         return <Badge variant="outline">{status}</Badge>;
     }
   };
 
+  const formatPaymentMethod = (method: string) => {
+    switch (method) {
+      case "cash":
+        return "Cash";
+      case "card":
+        return "Card";
+      case "bank_transfer":
+        return "Bank Transfer";
+      case "other":
+        return "Other";
+      default:
+        return method;
+    }
+  };
+
   const totalRevenue = payments
-    .filter(p => p.status === "Completed")
+    .filter(p => p.status === "completed")
     .reduce((sum, p) => sum + p.amount, 0);
 
   const pendingAmount = payments
-    .filter(p => p.status === "Pending")
+    .filter(p => p.status === "pending")
     .reduce((sum, p) => sum + p.amount, 0);
 
   return (
@@ -181,11 +196,10 @@ export default function Payments() {
                     <SelectValue placeholder="Select payment method" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="Credit Card">Credit Card</SelectItem>
-                    <SelectItem value="Debit Card">Debit Card</SelectItem>
-                    <SelectItem value="Bank Transfer">Bank Transfer</SelectItem>
-                    <SelectItem value="Cash">Cash</SelectItem>
-                    <SelectItem value="Check">Check</SelectItem>
+                    <SelectItem value="cash">Cash</SelectItem>
+                    <SelectItem value="card">Card</SelectItem>
+                    <SelectItem value="bank_transfer">Bank Transfer</SelectItem>
+                    <SelectItem value="other">Other</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
@@ -264,14 +278,19 @@ export default function Payments() {
               />
             </div>
             <div className="flex gap-2">
-              {["All", "Completed", "Pending", "Failed"].map((status) => (
+              {[
+                { value: "All", label: "All" },
+                { value: "completed", label: "Completed" },
+                { value: "pending", label: "Pending" },
+                { value: "failed", label: "Failed" }
+              ].map((status) => (
                 <Button
-                  key={status}
-                  variant={filterStatus === status ? "default" : "outline"}
+                  key={status.value}
+                  variant={filterStatus === status.value ? "default" : "outline"}
                   size="sm"
-                  onClick={() => setFilterStatus(status)}
+                  onClick={() => setFilterStatus(status.value)}
                 >
-                  {status}
+                  {status.label}
                 </Button>
               ))}
             </div>
@@ -296,14 +315,14 @@ export default function Payments() {
                     </div>
                     <div>
                       <h4 className="font-medium">{member ? member.name : "Unknown Member"}</h4>
-                      <p className="text-sm text-muted-foreground">{payment.payment_method}</p>
+                      <p className="text-sm text-muted-foreground">{formatPaymentMethod(payment.payment_method)}</p>
                       <p className="text-xs text-muted-foreground">{payment.id}</p>
                     </div>
                   </div>
                   <div className="flex items-center gap-6 text-right">
                     <div>
                       <p className="font-medium">${payment.amount}</p>
-                      <p className="text-sm text-muted-foreground">{payment.payment_method}</p>
+                      <p className="text-sm text-muted-foreground">{formatPaymentMethod(payment.payment_method)}</p>
                     </div>
                     <div>
                       <p className="text-sm font-medium">{payment.payment_date}</p>
