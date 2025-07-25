@@ -1,4 +1,5 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
+import { supabase } from "@/integrations/supabase/client";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -9,17 +10,21 @@ import { useToast } from "@/hooks/use-toast";
 import { ArrowLeft, Save, User, CreditCard } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 
-// Mock membership plans
-const membershipPlans = [
-  { id: "basic", name: "Basic Plan", price: 49, duration: "1 month" },
-  { id: "premium", name: "Premium Plan", price: 79, duration: "1 month" },
-  { id: "annual", name: "Annual Plan", price: 599, duration: "12 months" },
-  { id: "student", name: "Student Plan", price: 39, duration: "1 month" },
-];
+type MembershipPlan = {
+  id: string;
+  name: string;
+  price: number;
+  duration_months: number;
+  features: string[];
+};
 
 export default function AddMember() {
   const { toast } = useToast();
   const navigate = useNavigate();
+  
+  const [membershipPlans, setMembershipPlans] = useState<MembershipPlan[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [plansLoading, setPlansLoading] = useState(true);
   
   const [formData, setFormData] = useState({
     firstName: "",
@@ -34,11 +39,35 @@ export default function AddMember() {
     notes: ""
   });
 
+  // Fetch membership plans on component mount
+  useEffect(() => {
+    const fetchMembershipPlans = async () => {
+      setPlansLoading(true);
+      const { data, error } = await supabase
+        .from("membership_plans")
+        .select("*")
+        .eq("is_active", true);
+      
+      if (error) {
+        toast({
+          title: "Error",
+          description: "Failed to load membership plans.",
+          variant: "destructive"
+        });
+      } else if (data) {
+        setMembershipPlans(data);
+      }
+      setPlansLoading(false);
+    };
+
+    fetchMembershipPlans();
+  }, [toast]);
+
   const handleInputChange = (field: string, value: string) => {
     setFormData(prev => ({ ...prev, [field]: value }));
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     
     // Basic validation
@@ -51,29 +80,93 @@ export default function AddMember() {
       return;
     }
 
-    // In real app, this would save to database
-    console.log("Saving member:", formData);
-    
-    toast({
-      title: "Member Added Successfully",
-      description: `${formData.firstName} ${formData.lastName} has been added to the system.`,
-    });
+    setLoading(true);
 
-    // Reset form and navigate back
-    setFormData({
-      firstName: "",
-      lastName: "",
-      email: "",
-      phone: "",
-      address: "",
-      emergencyContact: "",
-      emergencyPhone: "",
-      membershipPlan: "",
-      startDate: "",
-      notes: ""
-    });
-    
-    navigate("/members");
+    try {
+      // Save member to database
+      const { data: memberData, error: memberError } = await supabase
+        .from("members")
+        .insert([
+          {
+            first_name: formData.firstName,
+            last_name: formData.lastName,
+            email: formData.email,
+            phone: formData.phone,
+            address: formData.address,
+            emergency_contact_name: formData.emergencyContact,
+            emergency_contact_phone: formData.emergencyPhone,
+            notes: formData.notes,
+            status: "active"
+          }
+        ])
+        .select()
+        .single();
+
+      if (memberError) {
+        toast({
+          title: "Error",
+          description: "Failed to add member. Please try again.",
+          variant: "destructive"
+        });
+        return;
+      }
+
+      // Create membership for the member
+      const startDate = formData.startDate || new Date().toISOString().split('T')[0];
+      const selectedPlan = membershipPlans.find(plan => plan.id === formData.membershipPlan);
+      const endDate = new Date(startDate);
+      endDate.setMonth(endDate.getMonth() + (selectedPlan?.duration_months || 1));
+
+      const { error: membershipError } = await supabase
+        .from("member_memberships")
+        .insert([
+          {
+            member_id: memberData.id,
+            membership_plan_id: formData.membershipPlan,
+            start_date: startDate,
+            end_date: endDate.toISOString().split('T')[0],
+            is_active: true
+          }
+        ]);
+
+      if (membershipError) {
+        // Member was created but membership assignment failed
+        toast({
+          title: "Warning",
+          description: "Member added but membership assignment failed. Please assign manually.",
+          variant: "destructive"
+        });
+      } else {
+        toast({
+          title: "Member Added Successfully",
+          description: `${formData.firstName} ${formData.lastName} has been added to the system.`,
+        });
+      }
+
+      // Reset form and navigate back
+      setFormData({
+        firstName: "",
+        lastName: "",
+        email: "",
+        phone: "",
+        address: "",
+        emergencyContact: "",
+        emergencyPhone: "",
+        membershipPlan: "",
+        startDate: "",
+        notes: ""
+      });
+      
+      navigate("/members");
+    } catch (error) {
+      toast({
+        title: "Error",
+        description: "An unexpected error occurred.",
+        variant: "destructive"
+      });
+    } finally {
+      setLoading(false);
+    }
   };
 
   const selectedPlan = membershipPlans.find(plan => plan.id === formData.membershipPlan);
@@ -199,14 +292,14 @@ export default function AddMember() {
               <CardContent className="space-y-4">
                 <div className="space-y-2">
                   <Label htmlFor="membershipPlan">Membership Plan *</Label>
-                  <Select value={formData.membershipPlan} onValueChange={(value) => handleInputChange("membershipPlan", value)}>
+                  <Select value={formData.membershipPlan} onValueChange={(value) => handleInputChange("membershipPlan", value)} disabled={plansLoading}>
                     <SelectTrigger>
-                      <SelectValue placeholder="Select a membership plan" />
+                      <SelectValue placeholder={plansLoading ? "Loading plans..." : "Select a membership plan"} />
                     </SelectTrigger>
                     <SelectContent>
                       {membershipPlans.map((plan) => (
                         <SelectItem key={plan.id} value={plan.id}>
-                          {plan.name} - ${plan.price}/{plan.duration}
+                          {plan.name} - ${plan.price}/{plan.duration_months} month{plan.duration_months > 1 ? 's' : ''}
                         </SelectItem>
                       ))}
                     </SelectContent>
@@ -217,8 +310,18 @@ export default function AddMember() {
                   <div className="p-4 bg-muted rounded-lg">
                     <h4 className="font-medium mb-2">{selectedPlan.name}</h4>
                     <p className="text-sm text-muted-foreground">
-                      Price: ${selectedPlan.price} per {selectedPlan.duration}
+                      Price: ${selectedPlan.price} per {selectedPlan.duration_months} month{selectedPlan.duration_months > 1 ? 's' : ''}
                     </p>
+                    {selectedPlan.features.length > 0 && (
+                      <div className="mt-2">
+                        <p className="text-sm font-medium">Features:</p>
+                        <ul className="text-sm text-muted-foreground list-disc list-inside">
+                          {selectedPlan.features.map((feature, index) => (
+                            <li key={index}>{feature}</li>
+                          ))}
+                        </ul>
+                      </div>
+                    )}
                   </div>
                 )}
 
@@ -250,12 +353,12 @@ export default function AddMember() {
 
         {/* Action Buttons */}
         <div className="flex gap-4 justify-end">
-          <Button type="button" variant="outline" onClick={() => navigate("/members")}>
+          <Button type="button" variant="outline" onClick={() => navigate("/members")} disabled={loading}>
             Cancel
           </Button>
-          <Button type="submit" className="bg-gradient-primary">
+          <Button type="submit" className="bg-gradient-primary" disabled={loading}>
             <Save className="w-4 h-4 mr-2" />
-            Save Member
+            {loading ? "Saving..." : "Save Member"}
           </Button>
         </div>
       </form>
