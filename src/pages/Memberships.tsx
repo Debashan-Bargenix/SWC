@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -35,15 +36,8 @@ function mapDbPlan(db: any): MembershipPlan {
 
 export default function Memberships() {
   const { toast } = useToast();
+  const navigate = useNavigate();
   const [plans, setPlans] = useState<MembershipPlan[]>([]);
-  const [isDialogOpen, setIsDialogOpen] = useState(false);
-  const [editingPlan, setEditingPlan] = useState<MembershipPlan | null>(null);
-  const [formData, setFormData] = useState({
-    name: "",
-    price: "",
-    duration: "",
-    features: ""
-  });
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -60,127 +54,22 @@ export default function Memberships() {
       });
   }, []);
 
-  // CRUD operations
-  const addPlan = async (newPlan: Omit<MembershipPlan, "id">) => {
-    setLoading(true);
-    const dbPlan = {
-      name: newPlan.name,
-      price: newPlan.price,
-      duration_months: newPlan.duration_months,
-      features: newPlan.features,
-      member_count: newPlan.memberCount,
-      is_active: newPlan.isActive,
-    };
-    const { data, error } = await supabase.from("membership_plans").insert([dbPlan]).select();
-    if (error) setError(error.message);
-    if (data) setPlans(prev => [...prev, ...data.map(mapDbPlan)]);
-    setLoading(false);
-  };
-
-  const updatePlan = async (id: string, updates: Partial<MembershipPlan>) => {
-    setLoading(true);
-    const dbUpdates: any = {};
-    if (updates.name) dbUpdates.name = updates.name;
-    if (updates.price) dbUpdates.price = updates.price;
-    if (updates.duration_months) dbUpdates.duration_months = updates.duration_months;
-    if (updates.features) dbUpdates.features = updates.features;
-    if (updates.memberCount) dbUpdates.member_count = updates.memberCount;
-    if (typeof updates.isActive === "boolean") dbUpdates.is_active = updates.isActive;
-    const { data, error } = await supabase.from("membership_plans").update(dbUpdates).eq("id", id).select();
-    if (error) setError(error.message);
-    if (data) setPlans(prev => prev.map(p => p.id === id ? mapDbPlan(data[0]) : p));
-    setLoading(false);
-  };
-
+  // Delete plan
   const deletePlan = async (id: string) => {
     setLoading(true);
     const { error } = await supabase.from("membership_plans").delete().eq("id", id);
-    if (error) setError(error.message);
-    setPlans(prev => prev.filter(p => p.id !== id));
-    setLoading(false);
-  };
-
-  const handleInputChange = (field: string, value: string) => {
-    setFormData(prev => ({ ...prev, [field]: value }));
-  };
-
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    
-    if (!formData.name || !formData.price || !formData.duration) {
+    if (error) {
+      setError(error.message);
       toast({
-        title: "Validation Error",
-        description: "Please fill in all required fields.",
+        title: "Error",
+        description: "Failed to delete the plan.",
         variant: "destructive"
       });
-      return;
-    }
-
-    const featuresArray = formData.features.split(',').map(f => f.trim()).filter(f => f);
-    
-    if (editingPlan) {
-      // Update existing plan
-      setPlans(prev => prev.map(plan => 
-        plan.id === editingPlan.id 
-          ? {
-              ...plan,
-              name: formData.name,
-              price: parseFloat(formData.price),
-              duration: formData.duration,
-              features: featuresArray
-            }
-          : plan
-      ));
-      toast({
-        title: "Plan Updated",
-        description: `${formData.name} has been updated successfully.`,
-      });
     } else {
-      // Create new plan
-      const newPlan = {
-        id: Math.max(...plans.map(p => p.id)) + 1,
-        name: formData.name,
-        price: parseFloat(formData.price),
-        duration: formData.duration,
-        features: featuresArray,
-        memberCount: 0,
-        isActive: true
-      };
-      setPlans(prev => [...prev, newPlan]);
-      toast({
-        title: "Plan Created",
-        description: `${formData.name} has been created successfully.`,
-      });
+      setPlans(prev => prev.filter(p => p.id !== id));
+      toast({ title: "Plan Deleted", description: "The membership plan has been deleted." });
     }
-
-    // Reset form
-    setFormData({ name: "", price: "", duration: "", features: "" });
-    setEditingPlan(null);
-    setIsDialogOpen(false);
-  };
-
-  const handleEdit = (plan: MembershipPlan) => {
-    setEditingPlan(plan);
-    setFormData({
-      name: plan.name,
-      price: plan.price.toString(),
-      duration: plan.duration,
-      features: plan.features.join(', ')
-    });
-    setIsDialogOpen(true);
-  };
-
-  const handleDelete = (planId: number) => {
-    setPlans(prev => prev.filter(plan => plan.id !== planId));
-    toast({
-      title: "Plan Deleted",
-      description: "The membership plan has been deleted.",
-    });
-  };
-
-  const resetForm = () => {
-    setFormData({ name: "", price: "", duration: "", features: "" });
-    setEditingPlan(null);
+    setLoading(false);
   };
 
   return (
@@ -190,79 +79,10 @@ export default function Memberships() {
           <h2 className="text-3xl font-bold tracking-tight">Membership Plans</h2>
           <p className="text-muted-foreground">Create and manage your gym membership plans.</p>
         </div>
-        <Dialog open={isDialogOpen} onOpenChange={(open) => {
-          setIsDialogOpen(open);
-          if (!open) resetForm();
-        }}>
-          <DialogTrigger asChild>
-            <Button className="bg-gradient-primary">
-              <Plus className="w-4 h-4 mr-2" />
-              Create New Plan
-            </Button>
-          </DialogTrigger>
-          <DialogContent className="sm:max-w-[500px]">
-            <DialogHeader>
-              <DialogTitle>
-                {editingPlan ? "Edit Membership Plan" : "Create New Membership Plan"}
-              </DialogTitle>
-            </DialogHeader>
-            <form onSubmit={handleSubmit} className="space-y-4">
-              <div className="space-y-2">
-                <Label htmlFor="name">Plan Name *</Label>
-                <Input
-                  id="name"
-                  value={formData.name}
-                  onChange={(e) => handleInputChange("name", e.target.value)}
-                  placeholder="e.g., Premium Plan"
-                  required
-                />
-              </div>
-
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label htmlFor="price">Price *</Label>
-                  <Input
-                    id="price"
-                    type="number"
-                    value={formData.price}
-                    onChange={(e) => handleInputChange("price", e.target.value)}
-                    placeholder="49.99"
-                    required
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="duration">Duration *</Label>
-                  <Input
-                    id="duration"
-                    value={formData.duration}
-                    onChange={(e) => handleInputChange("duration", e.target.value)}
-                    placeholder="1 month"
-                    required
-                  />
-                </div>
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="features">Features (comma-separated)</Label>
-                <Input
-                  id="features"
-                  value={formData.features}
-                  onChange={(e) => handleInputChange("features", e.target.value)}
-                  placeholder="Gym Access, Group Classes, Personal Training"
-                />
-              </div>
-
-              <div className="flex gap-3 justify-end pt-4">
-                <Button type="button" variant="outline" onClick={() => setIsDialogOpen(false)}>
-                  Cancel
-                </Button>
-                <Button type="submit" className="bg-gradient-primary">
-                  {editingPlan ? "Update Plan" : "Create Plan"}
-                </Button>
-              </div>
-            </form>
-          </DialogContent>
-        </Dialog>
+        <Button className="bg-gradient-primary" onClick={() => navigate('/create-membership-plan')}>
+          <Plus className="w-4 h-4 mr-2" />
+          Create New Plan
+        </Button>
       </div>
 
       {/* Plans Grid */}
@@ -279,7 +99,7 @@ export default function Memberships() {
               <div className="text-3xl font-bold text-accent">
                 ${plan.price}
                 <span className="text-sm font-normal text-muted-foreground">
-                  /{plan.duration}
+                  /{plan.duration_months} month{plan.duration_months > 1 ? 's' : ''}
                 </span>
               </div>
             </CardHeader>
@@ -308,7 +128,7 @@ export default function Memberships() {
               </div>
 
               <div className="flex gap-2 pt-4">
-                <Button variant="outline" size="sm" onClick={() => updatePlan(plan.id, {/* open edit modal */})}>
+                <Button variant="outline" size="sm" onClick={() => navigate(`/create-membership-plan?id=${plan.id}`)}>
                   <Edit className="w-4 h-4" />
                 </Button>
                 <Button 
@@ -333,7 +153,7 @@ export default function Memberships() {
             <div className="text-center py-12">
               <h3 className="text-lg font-medium mb-2">No membership plans yet</h3>
               <p className="text-muted-foreground mb-4">Create your first membership plan to get started.</p>
-              <Button className="bg-gradient-primary">
+              <Button className="bg-gradient-primary" onClick={() => navigate('/create-membership-plan')}>
                 <Plus className="w-4 h-4 mr-2" />
                 Create Your First Plan
               </Button>

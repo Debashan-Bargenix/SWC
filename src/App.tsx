@@ -11,6 +11,8 @@ import Memberships from "./pages/Memberships";
 import Payments from "./pages/Payments";
 import Reminders from "./pages/Reminders";
 import NotFound from "./pages/NotFound";
+import Settings from "./pages/Settings";
+import CreateMembershipPlan from "./pages/CreateMembershipPlan";
 
 const queryClient = new QueryClient();
 
@@ -28,6 +30,8 @@ const App = () => (
             <Route path="/memberships" element={<Memberships />} />
             <Route path="/payments" element={<Payments />} />
             <Route path="/reminders" element={<Reminders />} />
+            <Route path="/settings" element={<Settings />} />
+            <Route path="/create-membership-plan" element={<CreateMembershipPlan />} />
             <Route path="*" element={<NotFound />} />
           </Routes>
         </Layout>
